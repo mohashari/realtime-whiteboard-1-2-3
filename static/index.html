@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>RustBoard — Realtime Collaborative Whiteboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+</head>
+<body>
+  <!-- Header Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo">
+        <span class="logo-icon">🎨</span>
+        <span class="logo-text">RustBoard</span>
+      </div>
+      <div class="room-badge" id="roomBadge" title="Click to change room">
+        <span class="room-label">Room:</span>
+        <span class="room-name" id="currentRoomName">default</span>
+        <button class="icon-btn-tiny" id="btnCopyRoom" title="Copy room link">📋</button>
+      </div>
+    </div>
+
+    <div class="header-center">
+      <div class="action-group">
+        <button class="action-btn" id="btnUndo" title="Undo (Ctrl+Z)" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+        </button>
+        <button class="action-btn" id="btnRedo" title="Redo (Ctrl+Y)" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
+        </button>
+        <button class="action-btn" id="btnClear" title="Clear Canvas">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="action-group">
+        <div class="dropdown">
+          <button class="action-btn" id="btnExportMenu" title="Export Whiteboard">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span class="btn-text">Export</span>
+          </button>
+          <div class="dropdown-content" id="exportDropdown">
+            <button id="btnExportPng">Export as PNG (.png)</button>
+            <button id="btnExportSvg">Export as SVG (.svg)</button>
+            <button id="btnExportJson">Save Snapshot (.json)</button>
+          </div>
+        </div>
+        <button class="action-btn" id="btnImportJson" title="Import Snapshot (.json)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span class="btn-text">Import</span>
+        </button>
+        <input type="file" id="jsonFileInput" accept=".json" style="display:none">
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="collaborators-container" id="collaboratorsContainer" title="Active Collaborators">
+        <div class="collaborator-avatars" id="collaboratorAvatars"></div>
+        <span class="collaborator-count" id="collaboratorCount">1 online</span>
+      </div>
+
+      <div class="connection-status connected" id="connectionStatus" title="WebSocket status">
+        <span class="status-dot"></span>
+        <span class="status-text" id="statusText">Connected</span>
+      </div>
+
+      <button class="action-btn icon-only" id="btnHelp" title="Keyboard Shortcuts & Help">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="workspace" id="workspace">
+    <!-- Floating Tool Dock -->
+    <div class="tool-dock" id="toolDock">
+      <button class="tool-btn active" data-tool="pen" title="Pen (P)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="highlighter" title="Highlighter (H)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h3l6-6"/><path d="m22 2-2.5 2.5-4-4L18 0l4 2z"/><path d="m15.5 4.5 4 4-9 9-4-4 9-9z"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="line" title="Straight Line (L)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="arrow" title="Arrow (A)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="10 5 19 5 19 14"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="rectangle" title="Rectangle (R)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="circle" title="Ellipse / Circle (C)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="text" title="Text Note (T)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="eraser" title="Eraser (E)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+      </button>
+      <div class="dock-separator"></div>
+      <button class="tool-btn" data-tool="pan" title="Pan Canvas (Space / Hand)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
+      </button>
+    </div>
+
+    <!-- Floating Properties Bar -->
+    <div class="properties-bar" id="propertiesBar">
+      <!-- Stroke Color Swatches -->
+      <div class="prop-group">
+        <label class="prop-label">Color</label>
+        <div class="color-palette" id="colorPalette">
+          <div class="color-swatch active" data-color="#1e293b" style="background-color: #1e293b;" title="Charcoal"></div>
+          <div class="color-swatch" data-color="#ef4444" style="background-color: #ef4444;" title="Red"></div>
+          <div class="color-swatch" data-color="#f97316" style="background-color: #f97316;" title="Orange"></div>
+          <div class="color-swatch" data-color="#eab308" style="background-color: #eab308;" title="Amber"></div>
+          <div class="color-swatch" data-color="#10b981" style="background-color: #10b981;" title="Emerald"></div>
+          <div class="color-swatch" data-color="#06b6d4" style="background-color: #06b6d4;" title="Cyan"></div>
+          <div class="color-swatch" data-color="#3b82f6" style="background-color: #3b82f6;" title="Blue"></div>
+          <div class="color-swatch" data-color="#8b5cf6" style="background-color: #8b5cf6;" title="Purple"></div>
+          <div class="color-swatch" data-color="#ec4899" style="background-color: #ec4899;" title="Pink"></div>
+          <input type="color" class="custom-color-picker" id="customColorPicker" value="#1e293b" title="Custom Color">
+        </div>
+      </div>
+
+      <div class="prop-separator"></div>
+
+      <!-- Stroke Thickness -->
+      <div class="prop-group" id="strokeWidthGroup">
+        <label class="prop-label">Size</label>
+        <div class="size-options">
+          <button class="size-btn" data-size="2" title="Thin (2px)"><span class="size-dot" style="width:4px; height:4px;"></span></button>
+          <button class="size-btn active" data-size="4" title="Medium (4px)"><span class="size-dot" style="width:8px; height:8px;"></span></button>
+          <button class="size-btn" data-size="8" title="Bold (8px)"><span class="size-dot" style="width:12px; height:12px;"></span></button>
+          <button class="size-btn" data-size="16" title="Extra Bold (16px)"><span class="size-dot" style="width:16px; height:16px;"></span></button>
+        </div>
+      </div>
+
+      <div class="prop-separator" id="fillSeparator"></div>
+
+      <!-- Fill Mode for shapes -->
+      <div class="prop-group" id="fillGroup">
+        <label class="prop-label">Fill</label>
+        <div class="fill-options">
+          <button class="fill-btn active" data-fill="none" title="None">None</button>
+          <button class="fill-btn" data-fill="semi" title="Semi-transparent">Semi</button>
+          <button class="fill-btn" data-fill="solid" title="Solid">Solid</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Canvas Viewport -->
+    <div class="canvas-container" id="canvasContainer">
+      <canvas id="whiteboard"></canvas>
+      <div class="cursors-overlay" id="cursorsOverlay"></div>
+      <input type="text" id="inlineTextInput" class="inline-text-input" style="display:none" autocomplete="off" spellcheck="false">
+    </div>
+
+    <!-- Bottom Viewport Controls -->
+    <div class="viewport-controls">
+      <button class="view-btn" id="btnZoomOut" title="Zoom Out (-)">−</button>
+      <span class="zoom-level" id="zoomLevel">100%</span>
+      <button class="view-btn" id="btnZoomIn" title="Zoom In (+)">+</button>
+      <button class="view-btn" id="btnResetView" title="Reset View (100%)">Reset</button>
+      <span class="coords-indicator" id="coordsIndicator">X: 0, Y: 0</span>
+    </div>
+  </main>
+
+  <!-- Room Switcher Modal -->
+  <div class="modal-backdrop" id="roomModal" style="display:none">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Switch or Create Room</h3>
+        <button class="modal-close" id="btnCloseRoomModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Collaborate in real time by joining or creating a whiteboard room.</p>
+        <div class="form-group">
+          <label for="roomInput">Room Name or ID:</label>
+          <input type="text" id="roomInput" placeholder="e.g. sprint-planning, team-brainstorm" maxlength="40">
+        </div>
+        <div class="form-group">
+          <label for="usernameInput">Your Name:</label>
+          <input type="text" id="usernameInput" placeholder="e.g. Alice, Bob" maxlength="24">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btnCancelRoomModal">Cancel</button>
+        <button class="btn-primary" id="btnConfirmRoomSwitch">Enter Room</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clear Canvas Confirmation Modal -->
+  <div class="modal-backdrop" id="clearModal" style="display:none">
+    <div class="modal-card modal-small">
+      <div class="modal-header">
+        <h3>Clear Whiteboard?</h3>
+        <button class="modal-close" id="btnCloseClearModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>This will erase all drawings on this whiteboard for everyone in the room. This action cannot be easily undone.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btnCancelClear">Cancel</button>
+        <button class="btn-danger" id="btnConfirmClear">Clear Everything</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help & Shortcuts Modal -->
+  <div class="modal-backdrop" id="helpModal" style="display:none">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Keyboard Shortcuts & Tips</h3>
+        <button class="modal-close" id="btnCloseHelpModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <table class="shortcuts-table">
+          <thead>
+            <tr><th>Tool / Action</th><th>Shortcut</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Pen (Freehand)</td><td><kbd>P</kbd> or <kbd>1</kbd></td></tr>
+            <tr><td>Highlighter</td><td><kbd>H</kbd> or <kbd>2</kbd></td></tr>
+            <tr><td>Straight Line</td><td><kbd>L</kbd> or <kbd>3</kbd></td></tr>
+            <tr><td>Arrow</td><td><kbd>A</kbd> or <kbd>4</kbd></td></tr>
+            <tr><td>Rectangle</td><td><kbd>R</kbd> or <kbd>5</kbd></td></tr>
+            <tr><td>Circle / Ellipse</td><td><kbd>C</kbd> or <kbd>6</kbd></td></tr>
+            <tr><td>Text Note</td><td><kbd>T</kbd> or <kbd>7</kbd></td></tr>
+            <tr><td>Eraser</td><td><kbd>E</kbd> or <kbd>8</kbd></td></tr>
+            <tr><td>Pan / Hand Tool</td><td><kbd>Space</kbd> (hold) or <kbd>Hand</kbd></td></tr>
+            <tr><td>Zoom In / Out</td><td><kbd>Ctrl</kbd> + <kbd>Scroll</kbd> or <kbd>+</kbd> / <kbd>−</kbd></td></tr>
+            <tr><td>Undo</td><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td></tr>
+            <tr><td>Redo</td><td><kbd>Ctrl</kbd> + <kbd>Y</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td></tr>
+            <tr><td>Export Board</td><td><kbd>Ctrl</kbd> + <kbd>S</kbd></td></tr>
+          </tbody>
+        </table>
+        <div class="tips-box">
+          <strong>💡 Realtime Tips:</strong>
+          <ul>
+            <li>Open the same room link in another browser window or share it with teammates to draw collaboratively in real time!</li>
+            <li>You can see collaborators' live cursors and name badges as they move around the canvas.</li>
+            <li>Use the Export button to save your work as high-resolution PNG, scalable vector SVG, or complete JSON backup.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary" id="btnCloseHelp">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
